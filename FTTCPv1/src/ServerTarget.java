@@ -33,7 +33,7 @@ public class ServerTarget {
 		return port;
 	}
 	
-	public boolean isAlive() {
+	public boolean isOnline() {
 		return online;
 	}
 	
