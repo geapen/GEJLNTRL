@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-public class TCPStreamFwdThread {
+public class TCPStreamFwdThread extends Thread {
 	//Start 8K buffer but play increasing to 64K later
 	//https://en.wikipedia.org/wiki/TCP_tuning
 	//http://stackoverflow.com/questions/2811006/what-is-a-good-buffer-size-for-socket-programming
