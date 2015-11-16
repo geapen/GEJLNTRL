@@ -15,7 +15,7 @@ import java.util.Iterator;
  * are closed.
  */
 
-public class TCPListener {
+public class TCPListenerThread extends Thread{
 
 	private static final boolean DEBUG_ON = true;
 	private TCPProxy myProxy = null;
@@ -29,7 +29,7 @@ public class TCPListener {
 	/*
 	 * Create a client thread and pass client socket here
 	 */
-	public TCPListener (TCPProxy p, Socket s) {
+	public TCPListenerThread (TCPProxy p, Socket s) {
 		this.myProxy = p;
 		this.tcpClient = s;
 	}

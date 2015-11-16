@@ -15,12 +15,12 @@ public class TCPStreamFwdThread extends Thread {
 	
 	InputStream in = null;
 	OutputStream out = null;
-	TCPListener listener = null;
+	TCPListenerThread listener = null;
 	
 	/*
 	 * Create a TCPStream forwarding thread mapping listener's input to output (client/server)
 	 */
-	public TCPStreamFwdThread (TCPListener l, InputStream i, OutputStream o) {
+	public TCPStreamFwdThread (TCPListenerThread l, InputStream i, OutputStream o) {
 		this.in = i;
 		this.out = o;
 		this.listener = l;

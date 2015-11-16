@@ -2,6 +2,9 @@ import java.util.ArrayList;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.StringTokenizer;
 import java.util.Properties;
 
@@ -60,8 +63,8 @@ public class TCPProxy {
 				serverTargetList.add(target);
 				
 			}
-
-
+			
+			
 
 		} catch (Exception e) {
 			System.out.println("Exception: " + e);
@@ -70,12 +73,73 @@ public class TCPProxy {
 		}
 	}
 	
+	/*
+	 * Starts ListenerThread after binding to listening Port designated for TCPProxy
+	 */
+	public void startTCPListenerThread() throws Exception {
+		//bind to myPort
+		ServerSocket mySocket = null;
+		try {
+			mySocket = new ServerSocket(myPort);
+		}
+		catch (IOException ie) {
+			throw new IOException ("unable to bind to myPort [" + myPort + "]");
+		}
+		if (DEBUG_ON) {
+			System.out.println("TCPProxy started on port  [" + myPort + "]");
+			System.out.println("My Socket Address is  [" + InetAddress.getLocalHost().getHostAddress() + ":" + myPort + "]");
+		}
+		
+		while (true) {
+			try {
+				Socket tcpClient = mySocket.accept();
+				String clientAddress = tcpClient.getInetAddress().getHostAddress() + ":" + tcpClient.getPort();
+				if (DEBUG_ON) {
+					System.out.println("Accepted new Connection from  [" + clientAddress + "]");
+				}
+				TCPListenerThread listener = new TCPListenerThread(this, tcpClient);
+				listener.start();
+			}
+			catch (Exception e) {
+				//Bubble Up after closing mySocket
+				mySocket.close();
+				throw new Exception ("Some unexpected error occured.\n" + e.toString());
+			}
+		}
+		
+		
+	}
+	
+	/*
+	 * Wrapper method to start IsOnlineThread
+	 */
+	private void startIsTargetOnlineThread() {
+		IsOnlineThread isOnlineThread = new IsOnlineThread(this);
+		isOnlineThread.setDaemon(true);
+		isOnlineThread.start();
+	}
+	
+	/*
+	 * MAIN:
+	 *  - ReadMyConfig
+	 *  - startIsTargetOnlineThread
+	 *  - startTCPListenerThread
+	 */
+	
 	public static void main(String[] args) {
 		TCPProxy proxy = new TCPProxy();
 		try {
 			proxy.ReadMyConfig();
 			if (DEBUG_ON) {
 				System.out.println(proxy.getPollIntervalMs());
+			}
+			proxy.startIsTargetOnlineThread();
+			if (DEBUG_ON) {
+				System.out.println("Started isOnline polling thread");
+			}
+			proxy.startTCPListenerThread();
+			if (DEBUG_ON) {
+				System.out.println("Started Listener thread");
 			}
 		} catch (Exception e) {
 			System.out.println("Exception: " + e);
