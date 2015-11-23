@@ -9,7 +9,7 @@ import java.util.StringTokenizer;
 import java.util.Properties;
 
 public class TCPProxy {
-	private static final boolean DEBUG_ON = true;
+	private static boolean DEBUG_ON = false;
 	public static final String PROPERTIES_FILE = "config.properties";
 	private int myPort;
 	//http://javahungry.blogspot.com/2015/03/difference-between-array-and-arraylist-in-java-example.html
@@ -21,6 +21,9 @@ public class TCPProxy {
 		return this.pollIntervalMs;
 	}
 	
+	public boolean getDebugON() {
+		return DEBUG_ON;
+	}
 	public ArrayList<ServerTarget> getServerTargetList() {
 		return this.serverTargetList;
 	}
@@ -39,8 +42,7 @@ public class TCPProxy {
 			} else {
 				throw new FileNotFoundException("property file '" + propFileName + "' not found in the classpath");
 			}
- 
-
+			this.DEBUG_ON = Boolean.parseBoolean(props.getProperty("debugON"));
 			// get the property value and print it out
 			String serverTargets = props.getProperty("serverTargets");
 			this.myPort = Integer.parseInt(props.getProperty("myPort"));

@@ -17,7 +17,8 @@ import java.util.Iterator;
 
 public class TCPListenerThread extends Thread{
 
-	private static final boolean DEBUG_ON = true;
+	private static boolean DEBUG_ON = false;
+	
 	private TCPProxy myProxy = null;
 	private ServerTarget targetServer = null;
 	private boolean client_server_Online = false;
@@ -25,6 +26,8 @@ public class TCPListenerThread extends Thread{
 	private String serverAddress = "hostname:port";	
 	private Socket tcpClient = null;
 	private Socket tcpServer = null;
+	TCPStreamFwdThread clientProxy;
+	TCPStreamFwdThread serverProxy;
 
 	/*
 	 * Create a client thread and pass client socket here
@@ -32,6 +35,7 @@ public class TCPListenerThread extends Thread{
 	public TCPListenerThread (TCPProxy p, Socket s) {
 		this.myProxy = p;
 		this.tcpClient = s;
+		this.DEBUG_ON = p.getDebugON();
 	}
 	
 	/*
@@ -43,10 +47,12 @@ public class TCPListenerThread extends Thread{
 	 * Listener then closes the other open endpoint.
 	 */
 	public void run() {
+		
 		try {
 			clientAddress = tcpClient.getInetAddress().getHostAddress() + ":" + tcpClient.getPort();
 			tcpServer = openServerSocket();
 			if (tcpServer == null) {
+				//if tcpServer is NULL, all targets are offline
 				if (DEBUG_ON) {
 					System.out.println("[Servers OFFLINE] Cannot open connection for client " + clientAddress); 
 				}
@@ -78,9 +84,9 @@ public class TCPListenerThread extends Thread{
 				System.out.println("Forwarded " + clientAddress + " to " + serverAddress); 
 			}
 			
-			//Start TCP Stream forwarding
-			TCPStreamFwdThread clientProxy = new TCPStreamFwdThread (this, clientIn, serverOut);
-			TCPStreamFwdThread serverProxy = new TCPStreamFwdThread (this, serverIn, clientOut);
+			//Start TCP Stream forwarding and keep track of proxy references
+			clientProxy = new TCPStreamFwdThread (this, clientIn, serverOut, StreamSource.CLIENT);
+			serverProxy = new TCPStreamFwdThread (this, serverIn, clientOut, StreamSource.SERVER);
 			
 			client_server_Online = true;
 			clientProxy.start();
@@ -101,8 +107,12 @@ public class TCPListenerThread extends Thread{
 */			
 		}
 		catch (IOException ie){
-			ie.printStackTrace();
+			client_server_Online = false;
+			if (DEBUG_ON) {
+				ie.printStackTrace();
+			}
 		}
+
 	}
 	
 	// returns 1st ONLINE server from List
@@ -124,30 +134,99 @@ public class TCPListenerThread extends Thread{
 	/*
 	 * Use synchronized here to not deadlock
 	 */
-	public synchronized void tcpConnectionClosed() {
+	public synchronized void tcpConnectionClosed(StreamSource s) {
 		//decide what to do here
 		if (client_server_Online) {
-			//Close the open side of previously connected pair and stop forwarding
-			//Start closing Server first
-			try {
-				tcpServer.close();
-			}
-			catch (IOException ie) {
-				//Do we want to log this event to Logger here otherwise do nothing?
-			}
-			try {
-				tcpClient.close();
-			}
-			catch (IOException ie) {
-				//Do we want to log this event to Logger here otherwise do nothing?
-			}
-			client_server_Online = false;
-			targetServer.decrementClientCount();
+			//If Server died, failover to next available server and start new stream proxy
+			if (s == StreamSource.SERVER) {
 			
-			// Log connection closed to logger??
-			if (DEBUG_ON) {
-				System.out.println("TCP Stream forwarding stopped between" + clientAddress + " and " + serverAddress ); 
+				//tcpServer.close();  Verify that Server did die with SendUrgentData in isSocketRemoteEndOpen()
+				if (DEBUG_ON) {
+					System.out.println("Did Server die?" ); 
+				}
+				if (!isSocketRemoteEndOpen(tcpServer)) {
+					//Server died!  Initiate Failover.
+					try {
+						//decrement client count
+						targetServer.decrementClientCount();
+						tcpServer.close();
+						
+						// Another Point to Inject our Logger perhaps
+						if (DEBUG_ON) {
+							System.out.println("ServerTarget died. Need to transparently redirect client"); 
+						}
+						
+						//open connection to next available server
+						//same code as in run
+						tcpServer = openServerSocket();
+						if (tcpServer == null) {
+							if (DEBUG_ON) {
+								System.out.println("[Servers OFFLINE] Cannot open failover connection for client " + clientAddress); 
+							}
+							try {
+								tcpClient.close();
+							}
+							catch (IOException ie) {
+								if (DEBUG_ON) {
+									ie.printStackTrace();
+								}
+							}
+							//Exit
+							//return;
+						}
+						//update serverAddress value
+						serverAddress = tcpServer.getInetAddress().getHostAddress() + ":" + tcpServer.getPort();
+
+						OutputStream serverOut2 = tcpServer.getOutputStream();
+						InputStream serverIn2 = tcpServer.getInputStream();
+						OutputStream clientOut2 = tcpClient.getOutputStream();
+						
+						
+						//Update clientProxy with new Server outputstream
+						clientProxy.setOutputStream(serverOut2);
+						
+						//create new ServerTarget proxy Thread
+						serverProxy = new TCPStreamFwdThread (this, serverIn2, clientOut2, StreamSource.SERVER);
+						serverProxy.start();
+						if (DEBUG_ON) {
+							System.out.println("Re-Forwarded " + clientAddress + " to " + serverAddress); 
+						}						
+					}
+					catch (IOException ie) {
+						client_server_Online = false;
+					}
+				
+				}
+				else {
+					if (DEBUG_ON) {
+						System.out.println("Server did not die.." ); 
+					}
+				}
+
 			}
+			
+			
+			if (s == StreamSource.CLIENT) {
+				//Client Close.  Just clean up connections to server
+
+				if (DEBUG_ON) {
+					System.out.println("Client terminated connection.  Clean-up Server connection(s)" ); 
+				}	
+				
+				try {
+					tcpServer.close();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					//e.printStackTrace();
+				}
+				if (DEBUG_ON) {
+					System.out.println("TCP Stream forwarding stopped between" + clientAddress + " and " + serverAddress ); 
+				}
+				targetServer.decrementClientCount();
+				client_server_Online = false;
+					
+			}
+				
 		}
 	}
 	
@@ -172,5 +251,19 @@ public class TCPListenerThread extends Thread{
 			}
 		}
 		
+	}
+	
+	private boolean isSocketRemoteEndOpen(Socket s) {
+		boolean result = true;
+		
+		try {
+			//explicitly verify that server's socket is closed
+			s.sendUrgentData(0);
+		} catch (IOException ie) {
+			// TODO Auto-generated catch block
+			//e.printStackTrace();
+			result = false;
+		}
+		return result;
 	}
 }
