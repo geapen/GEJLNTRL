@@ -18,6 +18,7 @@ import java.util.Iterator;
 public class TCPListenerThread extends Thread{
 
 	private static boolean DEBUG_ON = false;
+	private static int RCV_BUF = 8192;
 	
 	private TCPProxy myProxy = null;
 	private ServerTarget targetServer = null;
@@ -32,9 +33,10 @@ public class TCPListenerThread extends Thread{
 	/*
 	 * Create a client thread and pass client socket here
 	 */
-	public TCPListenerThread (TCPProxy p, Socket s) {
+	public TCPListenerThread (TCPProxy p, Socket s, int receiveBuffereSize) {
 		this.myProxy = p;
 		this.tcpClient = s;
+		this.RCV_BUF = receiveBuffereSize;
 		this.DEBUG_ON = p.getDebugON();
 	}
 	
@@ -85,8 +87,8 @@ public class TCPListenerThread extends Thread{
 			}
 			
 			//Start TCP Stream forwarding and keep track of proxy references
-			clientProxy = new TCPStreamFwdThread (this, clientIn, serverOut, StreamSource.CLIENT);
-			serverProxy = new TCPStreamFwdThread (this, serverIn, clientOut, StreamSource.SERVER);
+			clientProxy = new TCPStreamFwdThread (this, clientIn, serverOut, StreamSource.CLIENT, RCV_BUF);
+			serverProxy = new TCPStreamFwdThread (this, serverIn, clientOut, StreamSource.SERVER, RCV_BUF);
 			
 			client_server_Online = true;
 			clientProxy.start();
@@ -186,7 +188,7 @@ public class TCPListenerThread extends Thread{
 						clientProxy.setOutputStream(serverOut2);
 						
 						//create new ServerTarget proxy Thread
-						serverProxy = new TCPStreamFwdThread (this, serverIn2, clientOut2, StreamSource.SERVER);
+						serverProxy = new TCPStreamFwdThread (this, serverIn2, clientOut2, StreamSource.SERVER, RCV_BUF);
 						serverProxy.start();
 						if (DEBUG_ON) {
 							System.out.println("Re-Forwarded " + clientAddress + " to " + serverAddress); 

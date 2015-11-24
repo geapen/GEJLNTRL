@@ -11,7 +11,7 @@ public class TCPStreamFwdThread extends Thread {
 	//Start 8K buffer but play increasing to 64K later
 	//https://en.wikipedia.org/wiki/TCP_tuning
 	//http://stackoverflow.com/questions/2811006/what-is-a-good-buffer-size-for-socket-programming
-	private static final int RCV_BUF = 8192;
+	private static int RCV_BUF = 8192;
 	
 	private InputStream in = null;
 	private OutputStream out = null;
@@ -30,12 +30,12 @@ public class TCPStreamFwdThread extends Thread {
 	/*
 	 * Create a TCPStream forwarding thread mapping listener's input to output (client/server)
 	 */
-	public TCPStreamFwdThread (TCPListenerThread l, InputStream i, OutputStream o, StreamSource s) {
+	public TCPStreamFwdThread (TCPListenerThread l, InputStream i, OutputStream o, StreamSource s, int receiveBufferSize) {
 		this.in = i;
 		this.out = o;
 		this.listener = l;
 		this.src = s;
-		
+		this.RCV_BUF = receiveBufferSize;
 	}
 	/*
 	 * Run until end of stream or failure.  Then Exit

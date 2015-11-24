@@ -11,6 +11,7 @@ import java.util.Properties;
 public class TCPProxy {
 	private static boolean DEBUG_ON = false;
 	public static final String PROPERTIES_FILE = "config.properties";
+	private static int RCV_BUF = 8192;
 	private int myPort;
 	//http://javahungry.blogspot.com/2015/03/difference-between-array-and-arraylist-in-java-example.html
 	//private ServerTarget[] arServerTargets = null;
@@ -47,23 +48,29 @@ public class TCPProxy {
 			String serverTargets = props.getProperty("serverTargets");
 			this.myPort = Integer.parseInt(props.getProperty("myPort"));
 			if (DEBUG_ON) {
-				System.out.println(this.myPort); 
+				System.out.println("my Port: " + this.myPort); 
 			}
 			this.pollIntervalMs = Long.parseLong(props.getProperty("pollIntervalMs"));
 			if (DEBUG_ON) {
-				System.out.println(this.pollIntervalMs); 
-			}			
+				System.out.println("Poll Interval: " + this.pollIntervalMs); 
+			}
+			this.RCV_BUF = Integer.parseInt(props.getProperty("receiveBuffer"));
+			if (DEBUG_ON) {
+				System.out.println("Receive Buffer: " + this.RCV_BUF); 
+			}
+			
 			serverTargetList = new ArrayList<ServerTarget>();
 			StringTokenizer stServers = new StringTokenizer(serverTargets,",");
+			int i = 1;
 			while (stServers.hasMoreTokens()) {
 				String serverPort = stServers.nextToken();
 				if (DEBUG_ON) {
-					System.out.println(serverPort);
+					System.out.println("ServerTarget #" + i + ": " + serverPort);
 				}
 				ServerTarget target = new ServerTarget();
 				target.setAddress(serverPort);
 				serverTargetList.add(target);
-				
+				i++;
 			}
 			
 			
@@ -99,7 +106,7 @@ public class TCPProxy {
 				if (DEBUG_ON) {
 					System.out.println("Accepted new Connection from  [" + clientAddress + "]");
 				}
-				TCPListenerThread listener = new TCPListenerThread(this, tcpClient);
+				TCPListenerThread listener = new TCPListenerThread(this, tcpClient, RCV_BUF);
 				listener.start();
 			}
 			catch (Exception e) {
@@ -133,7 +140,7 @@ public class TCPProxy {
 		try {
 			proxy.ReadMyConfig();
 			if (DEBUG_ON) {
-				System.out.println(proxy.getPollIntervalMs());
+				System.out.println("Get Target Poll Interval in Main: " + proxy.getPollIntervalMs());
 			}
 			proxy.startIsTargetOnlineThread();
 			if (DEBUG_ON) {
