@@ -25,6 +25,7 @@ public class ProxyPvtListenerThread extends Thread{
 		this.myProxy = p;
 		this.joinAckRcvd = joined;
 		this.mutex = mutex;
+		this.DEBUG_ON = p.getDebugON();
 	}
 	
 	public void run() {

@@ -11,12 +11,14 @@ public class LamportMutex {
 	private DirectClock clock;
 	private ArrayList<ServerTarget> proxiesList;
 	Boolean joinAckRcvd;
+	Long[] lastPingRcvd;
 	
-	public LamportMutex(int id, DirectClock clock, ArrayList<ServerTarget> list, Boolean joined ) {
+	public LamportMutex(int id, DirectClock clock, ArrayList<ServerTarget> list, Long[] lpr, Boolean joined ) {
 		this.clock = clock;
 		this.myQ = new int[list.size()];
 		this.proxiesList = list;
 		this.myId = id;
+		this.lastPingRcvd = lpr;
 		joinAckRcvd = joined;
 		
 		//each slot in queue array represents process id at that index.
@@ -40,6 +42,7 @@ public class LamportMutex {
 			//syntax: mutex {request | release | ok} <my id> <my clock value> <my timestamp>
 			broadcastMessage("request_cs " + myId + " " + clock.getValue(myId) + " " + myQ[myId]);
 			while (!okayCS()){
+				//Remove Debug Stmt
 				//printQueue();
 				//printClock();
 				//System.out.println("TCPProxy [" + this.myId + "] okayCS was false. Waiting...");
@@ -105,7 +108,8 @@ public class LamportMutex {
 			Socket socket;
 			socket = new Socket(ia, dest.getPort());
 			PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-			//System.out.println("server "+ message); 
+			//Remove Debug Stmt
+			//System.out.println("to port: "+ dest.getPort() + ":" + message); 
 			out.write(message);
 			out.flush();
 			socket.close();
@@ -114,12 +118,14 @@ public class LamportMutex {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		} catch (IOException e) {
+			//Remove Debug Stmt
 			//System.out.println("Could not send server message to " + dest.hostname + ":" + dest.port);
 		}
 	}
 	
 	//syntax: mutex {request_cs | release_cs | ack_req | join | join_ack} <my id> <my clock value> <my timestamp>	//examples: mutex request 0  3
 	public synchronized void handleMessage(String message) {
+		//System.out.println("in handleMessage: " + message);
 		String[] messageArray = message.split(" ");
 
 		String command = messageArray[0];
@@ -167,7 +173,7 @@ public class LamportMutex {
 				if (!joinAckRcvd) {				
 					joinAckRcvd = Boolean.TRUE;
 				}
-				//System.out.println("ack_join " + myId + " " + clock.getValue(myId) + " " + myQ[myId] + " " + theater.serializeTheater());
+				System.out.println("ack_join " + myId + " " + clock.getValue(myId) + " " + myQ[myId] + " -> " + msg_id);
 				sendMessage("ack_join " + myId + " " + clock.getValue(myId) + " " + myQ[myId] , proxiesList.get(msg_id));
 			break;				
 			case "ack_join":
@@ -177,11 +183,13 @@ public class LamportMutex {
 					joinAckRcvd = Boolean.TRUE;
 				}
 			break;
-			/*
 			case "ping":
+				//Remove Debug Stmt
+				//System.out.println("Current Ping Value:[" + msg_id + "]: " + lastPingRcvd[msg_id]); 
 				lastPingRcvd[msg_id] = System.currentTimeMillis();
+				//Remove Debug Stmt
+				//System.out.println("After Receive Ping Value:[" + msg_id + "]: " + lastPingRcvd[msg_id]); 
 			break;	
-			*/
 			default:
 				throw new IllegalArgumentException("invalid message command prefix: " + message);
 		}

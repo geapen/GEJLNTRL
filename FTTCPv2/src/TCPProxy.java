@@ -9,7 +9,11 @@ import java.util.Scanner;
 import java.util.StringTokenizer;
 import java.util.Properties;
 
+
+
 public class TCPProxy {
+	
+	
 	private static boolean DEBUG_ON = false;
 	public static final String PROPERTIES_FILE = "config.properties";
 	private static int RCV_BUF = 8192;
@@ -24,11 +28,17 @@ public class TCPProxy {
 	private ArrayList<ServerTarget> serverTargetList;
 	private ArrayList<ServerTarget> proxyTargetList;
 	private long pollIntervalMs;
+	private long proxyPollIntervalMs;
 	private LamportMutex mutex;
 	private DirectClock clock;
+	Long[] lastPingRcvd;
 
 	public long getPollIntervalMs() {
 		return this.pollIntervalMs;
+	}
+	
+	public long getProxyPollIntervalMs() {
+		return this.proxyPollIntervalMs;
 	}
 	
 	public int getMyPort() {
@@ -48,6 +58,10 @@ public class TCPProxy {
 	}
 	*/
 	
+	public long getlastPingRcvd(int k) {
+		return lastPingRcvd[k];
+	}
+	
 	public boolean getDebugON() {
 		return DEBUG_ON;
 	}
@@ -66,6 +80,7 @@ public class TCPProxy {
 	//http://crunchify.com/java-properties-file-how-to-read-config-properties-values-in-java/
 	public void ReadMyConfig(String id) throws IOException{
 		InputStream inputStream = null;
+		int numProxy = 0;
 		try {
 			
 
@@ -97,7 +112,10 @@ public class TCPProxy {
 				System.out.println("Receive Buffer: " + this.RCV_BUF); 
 			}
 			String proxyTargets = props.getProperty("proxyTargets");
-			
+			this.proxyPollIntervalMs = Long.parseLong(props.getProperty("proxyPollIntervalMs"));
+			if (DEBUG_ON) {
+				System.out.println("Proxy Poll Interval: " + this.proxyPollIntervalMs); 
+			}
 			serverTargetList = new ArrayList<ServerTarget>();
 			StringTokenizer stServers = new StringTokenizer(serverTargets,",");
 			int i = 1;
@@ -123,11 +141,20 @@ public class TCPProxy {
 				}
 				ServerTarget target = new ServerTarget();
 				target.setAddress(proxyHostnamePort);
+				//Initially set online and let Poller set Offline so Lamport works
+				target.setOnline();
 				proxyTargetList.add(target);
 			}
 			//since can extract from size, no need to store explicitly
-			//this.numProxy = proxyTargetList.size();
+			numProxy = proxyTargetList.size();
 			this.myPvtPort = proxyTargetList.get(myID).getPort();
+			this.clock = new DirectClock(numProxy, myID);
+			//Initialize lastPingRcvd to 0
+			this.lastPingRcvd = new Long[numProxy];
+			for (int k = 0; k < numProxy; k++) {
+				this.lastPingRcvd[k] = 0L;
+			}
+			this.mutex = new LamportMutex(myID, clock, proxyTargetList, lastPingRcvd, joinAckReceived);
 
 		} catch (Exception e) {
 			System.out.println("Exception: " + e);
@@ -139,40 +166,12 @@ public class TCPProxy {
 	/*
 	 * Starts ProxyPvtListenerThread after binding to private listening Port designated for TCPProxy
 	 */
-	public void startProxyPvtListenerThread() throws Exception {
-		this.clock = new DirectClock(proxyTargetList.size(), myID);
-		this.mutex = new LamportMutex(myID, clock, proxyTargetList, joinAckReceived);
-		mutex.broadcastMessage("join " + myID + " " + clock.getValue(myID) + " " + clock.getValue(myID) + " " + "");
+	public void startPrivateListener() throws Exception {
 		
-		ServerSocket myPvtSocket = null;
-		try {
-			myPvtSocket = new ServerSocket(myPvtPort);
-		}
-		catch (IOException ie) {
-			throw new IOException ("unable to bind to myPvtPort [" + myPvtPort + "]");
-		}
-		if (DEBUG_ON) {
-			System.out.println("TCPProxy PvtListener started on port  [" + myPvtPort + "]");
-			System.out.println("My Socket Address is  [" + InetAddress.getLocalHost().getHostAddress() + ":" + myPvtPort + "]");
-		}
-		
-		while (true) {
-			try {
-				Socket proxyClient = myPvtSocket.accept();
-				String clientAddress = proxyClient.getInetAddress().getHostAddress() + ":" + proxyClient.getPort();
-				if (DEBUG_ON) {
-					System.out.println("Received message from Proxy instance at  [" + clientAddress + "]");
-				}
-				//ProxyPvtListenerThread(int id, TCPProxy p, Socket s, Boolean joined, LamportMutex mutex)
-				ProxyPvtListenerThread proxylistener = new ProxyPvtListenerThread(myID, this, proxyClient, joinAckReceived, mutex);
-				proxylistener.start();
-			}
-			catch (Exception e) {
-				//Bubble Up after closing mySocket
-				myPvtSocket.close();
-				throw new Exception ("Unexpected error occured in ProxyPvtListener.\n" + e.toString());
-			}
-		}
+		//PrivateListener(int id, TCPProxy p,  Boolean joined, DirectClock clock, LamportMutex mutex)
+		PrivateListener pvtListener = new PrivateListener(myID,this,joinAckReceived,clock,mutex);
+		pvtListener.setDaemon(true);
+		pvtListener.start();
 		
 	}
 	
@@ -182,6 +181,12 @@ public class TCPProxy {
 	public void startTCPListenerThread() throws Exception {
 		//bind to myPort
 		//block here with Lamport?
+		//Wait for warmup period (PollInterval)
+		try {
+			Thread.sleep(pollIntervalMs);
+		} catch (InterruptedException ie) 	{
+			ie.printStackTrace();
+		}
 		if (DEBUG_ON) {
 			System.out.println("Proxy [" + myID + "] trying to acquire Lamport Mutex");
 		}
@@ -240,7 +245,7 @@ public class TCPProxy {
 	 * Wrapper method to start ProxyPollerThread
 	 */
 	private void startProxyPollerThread() {
-		ProxyPollerThread proxyPoller = new ProxyPollerThread(this, mutex);
+		ProxyPollerThread proxyPoller = new ProxyPollerThread(this, clock, mutex);
 		
 		//http://www.linuxtopia.org/online_books/programming_books/thinking_in_java/TIJ315_005.htm
 		//http://docs.oracle.com/javase/8/docs/api/java/lang/Thread.html
@@ -272,11 +277,11 @@ public class TCPProxy {
 		try {
 			proxy.ReadMyConfig(args[0]);
 			if (DEBUG_ON) {
-				System.out.println("Get Target Poll Interval in Main: " + proxy.getPollIntervalMs());
+				System.out.println("Get Proxy Internal ID: " + proxy.getMyID());
 			}
-			proxy.startProxyPvtListenerThread();
+			proxy.startPrivateListener();
 			if (DEBUG_ON) {
-				System.out.println("Started ProxyPvtListener thread");
+				System.out.println("Started PrivateListener");
 			}
 			proxy.startProxyPollerThread();
 			if (DEBUG_ON) {
@@ -285,7 +290,7 @@ public class TCPProxy {
 			proxy.startServerPollerThread();
 			if (DEBUG_ON) {
 				System.out.println("Started ServerPoller thread");
-			}
+			}			
 			proxy.startTCPListenerThread();
 			if (DEBUG_ON) {
 				System.out.println("Started TCPListener thread");
