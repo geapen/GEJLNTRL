@@ -4,10 +4,10 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Iterator;
 
-public class IsOnlineThread extends Thread {
+public class ServerPollerThread extends Thread {
 	private TCPProxy myProxy = null;
 	
-	public IsOnlineThread(TCPProxy p) {
+	public ServerPollerThread(TCPProxy p) {
 		this.myProxy = p;
 	}
 	
@@ -44,7 +44,10 @@ public class IsOnlineThread extends Thread {
 			s.close();
 		}
 		catch (IOException ie){
-			ie.printStackTrace();
+			//ie.printStackTrace();
+			if (myProxy.getDebugON()) {
+				System.out.println("Server Target Offline ["+t.getHostName()+":"+t.getPort()+"]");
+			}
 			result = false;
 		}
 
