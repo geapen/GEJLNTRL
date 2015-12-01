@@ -8,7 +8,6 @@ public class Server {
 		if (args.length != 1) {
 	      System.out.println("ERROR: Provide 1 arguments");
 	      System.out.println("\t(1) <port>: the port number for TCP connection");
-
 	      System.exit(-1);
 	    }
 

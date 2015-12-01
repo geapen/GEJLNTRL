@@ -175,7 +175,7 @@ public class Client {
 		String retValue = "**Error**";
 		String host = hostAddress = "127.0.0.1";
 
-		Integer port = 8015;
+		Integer port = 8010;
 		try {
 			server = new Socket(host, port);
 			out = new PrintWriter(server.getOutputStream(), true);
