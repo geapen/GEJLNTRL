@@ -22,10 +22,7 @@ public class ProxyPollerThread  extends Thread {
 			} catch (InterruptedException ie) 	{
 				ie.printStackTrace();
 			}
-			//if currently active instance, do nothing
-			//if (!myProxy.isListenerActive()) {
-				
-			//}
+
 		}
 	}
 	
@@ -33,13 +30,17 @@ public class ProxyPollerThread  extends Thread {
 		ArrayList<ServerTarget> proxiesList = myProxy.getProxyTargetList();
 		int myID = myProxy.getMyID();
 		int proxy_index = 0;
+		//Send Heartbeat "PING" to indicate I am alive
+		mutex.broadcastMessage("ping " + myID + " " + clock.getValue(myID) + " " + Integer.MAX_VALUE );
+		
 		for(ServerTarget proxy : proxiesList){
 			//only send messages to servers that aren't me.
 			if(proxy_index != myID){
-				mutex.broadcastMessage("ping " + myID + " " + clock.getValue(myID) + " " + Integer.MAX_VALUE );
+				
 				if (!IsOnline(proxy_index)) {
 					//Mark Proxy as Offline after 2 failed heartbeats.  This is used by Lamport in OkayCS
 					proxy.setOffline();
+					
 					//Call Release_CS on behalf of dead proxy in case it is holding a lock.  This will update my local queue
 					//syntax: mutex {request_cs | release_cs | ack_req | join | join_ack} <my id> <my clock value> <my timestamp>
 					String specialMessage = "release_cs " + proxy_index + " " + 0 + " " + 0;
